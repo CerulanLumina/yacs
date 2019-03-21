@@ -7,7 +7,11 @@ import { Section, Listing, Term } from 'yacs-api-client';
 import { SidebarService } from './sidebar.service';
 import { SelectedTermService } from './selected-term.service';
 
-class SelectedSections {
+export class SelectedSections {
+
+  // A mapping of listing ids to an array of section ids that are selected for it
+  private selectionMap: Map<string, string[]>;
+
   public toggleSection(section: Section): boolean {
     if (this.isSectionSelected(section)) {
       return this.removeSection(section);
@@ -16,25 +20,52 @@ class SelectedSections {
     }
   }
   public addSection(section: Section, fireEvent: boolean = true): boolean {
-    // TODO impl
-    return false;
+    const id = section.id;
+    const listingId = section.listing.id;
+    if (this.selectionMap.has(listingId)) {
+      const sectionsForListing = this.selectionMap.get(listingId);
+      if (sectionsForListing.indexOf(id) !== -1) {
+        return false;
+      } else {
+        sectionsForListing.push(id);
+      }
+    } else {
+      this.selectionMap.set(listingId, [id]);
+      return true;
+    }
   }
   public removeSection(section: Section, fireEvent: boolean = true): boolean {
-    // TODO impl
-    return false;
+    const id = section.id;
+    const listingId = section.listing.id;
+    if (this.selectionMap.has(listingId)) {
+      const sectionsForListing = this.selectionMap.get(listingId);
+      const idIndex = sectionsForListing.indexOf(id);
+      if (idIndex !== -1) {
+        sectionsForListing.splice(idIndex, 1);
+      } else {
+        return false;
+      }
+    } else {
+      return false;
+    }
   }
   public isSectionSelected(section: Section): boolean {
-    return false; // TODO impl
+    const id = section.id;
+    const listingId = section.listing.id;
+    if (this.selectionMap.has(listingId)) {
+      const sectionsForListing = this.selectionMap.get(listingId);
+      return sectionsForListing.indexOf(id) !== -1;
+    }
   }
 
   // check if listing has any selected sections
   public hasSelectedSection(listing: Listing): boolean {
-    return false; // TODO impl
+    return this.selectionMap.has(listing.id);
   }
 
   // If listing has any section selected, remove all listing's selected sections
   // else add all listing's sections.
-  public toggleListing(listing: Listing): boolean {
+  public toggleListing(listing: Listing) {
     if (this.hasSelectedSection(listing)) {
       // remove all sections of listing
       this.removeListing(listing);
@@ -44,7 +75,6 @@ class SelectedSections {
       })
     }
     // TODO fire event
-    return false; // TODO impl finish
   }
 
   // removes all sections of a listing
@@ -57,7 +87,7 @@ class SelectedSections {
 
   // clear all selections
   public clearSelections() {
-    // TODO impl
+    this.selectionMap.clear();
   }
 }
 
