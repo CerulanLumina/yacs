@@ -3,8 +3,7 @@ import { Injectable } from '@angular/core';
 import 'rxjs/Rx';
 import {Subject, Subscription, Subscriber} from 'rxjs/Rx';
 
-import { Section } from 'yacs-api-client';
-import { Listing } from 'yacs-api-client';
+import { Section, Listing, Term } from 'yacs-api-client';
 import { SidebarService } from './sidebar.service';
 import { SelectedTermService } from './selected-term.service';
 
@@ -81,7 +80,11 @@ export class SelectionService {
 
    constructor (
     public sidebarService: SidebarService,
-    protected selectedTermService: SelectedTermService) { }
+    protected selectedTermService: SelectedTermService) {
+    this.selectedTermService.subscribeToActiveTerm((term: Term) => {
+      this.clear();
+    })
+  }
 
   subscribe (next): Subscription {
     return this.clickEvent.subscribe(next);
@@ -101,13 +104,14 @@ export class SelectionService {
 
   // calls removeSection or addSection based on isSectionSelected
   public toggleSection (section : Section) {
-
+    if (!this.selectedTermService.isCurrentTermActive) { return; }
     this.isSectionSelected(section) ? this.removeSection(section) : this.addSection(section);
     this.next('event'); //this should be changed
   }
 
   // adds section, fires event to observer
   public addSection (section: Section) {
+    if (!this.selectedTermService.isCurrentTermActive) { return; }
     let store = this.getSelections() || {};
     store[section.listing.id] = store[section.listing.id] || [];
     if (store[section.listing.id].includes(section.id)) return false;
@@ -121,6 +125,7 @@ export class SelectionService {
 
   // removes selected section, fires event to observer
   public removeSection (section: Section) {
+    if (!this.selectedTermService.isCurrentTermActive) { return; }
     let store = this.getSelections() || {};
     if (!store[section.listing.id] || !store[section.listing.id].includes(section.id)) return false;
     store[section.listing.id].splice(store[section.listing.id].indexOf(section.id), 1);
@@ -134,6 +139,7 @@ export class SelectionService {
   // adds or removes all sections of a listing (if any selected section, remove all sections of listing)
   // otherwise, add all sections
   public toggleCourse(course: Listing) {
+    if (!this.selectedTermService.isCurrentTermActive) { return; }
     if (this.hasSelectedSection(course)) {
       let store = this.getSelections();
       delete store[course.id];
@@ -148,7 +154,7 @@ export class SelectionService {
 
   // removes all sections of a listing
    public removeListing(course: Listing) {
-    
+    if (!this.selectedTermService.isCurrentTermActive) { return; }
     if (this.hasSelectedSection(course)) {
       let store = this.getSelections();
       delete store[course.id];
