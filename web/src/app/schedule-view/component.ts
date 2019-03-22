@@ -31,7 +31,7 @@ export class ScheduleViewComponent implements OnInit, OnDestroy, AfterViewInit {
   constructor (
     private selectionService : SelectionService,
     private activatedRoute: ActivatedRoute) {
-    this.subscription = this.selectionService.subscribe(() => {
+    this.subscription = this.selectionService.subscribeToSelections(() => {
       this.getSchedules();
     });
   }

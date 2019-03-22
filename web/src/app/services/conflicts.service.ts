@@ -42,15 +42,15 @@ export class ConflictsService {
    * @return {Object} The selection data converted into an array of 2-element arrays, each with a section id and its associated course id, and a map of each course ID to its number of selected sections.
    */
   public flattenSelections(selections) {
-    let selectionsFlat = [];
-    let courseSelectionCounts = {};
+    const selectionsFlat = selections;
+    const courseSelectionCounts = {};
 
-    Object.keys(selections).forEach((cid) => {
-      courseSelectionCounts[cid] = 0;
-      selections[cid].forEach((sid) => {
-        selectionsFlat.push([sid, cid]);
-        courseSelectionCounts[cid]++;
-      });
+    selections.forEach((selection) => {
+      const cid = selection[1];
+      if (courseSelectionCounts[cid] === undefined) {
+        courseSelectionCounts[cid] = 0;
+      }
+      courseSelectionCounts[cid]++;
     });
 
     // then sort selectionsFlat by ascending order of sid
@@ -74,7 +74,7 @@ export class ConflictsService {
    */
   public doesConflict(section: Section) {
     let sectId = parseInt(section.id);
-    let flattenedSelections = this.flattenSelections(this.selectionService.getSelections()); // An object in the same format returned by flattenSelections.
+    let flattenedSelections = this.flattenSelections(this.selectionService.getSelectedSectionListingPairs()); // An object in the same format returned by flattenSelections.
     let selectionsFlat = flattenedSelections.selectionsFlat;
     let courseSelectionCounts = {};
 

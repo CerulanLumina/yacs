@@ -6,7 +6,8 @@ import { SelectedTermService } from '../../services/selected-term.service';
 import { Term, Listing } from 'yacs-api-client';
 import 'rxjs/Rx';
 import {Subject, Subscription} from 'rxjs/Rx';
-import * as domtoimage  from 'dom-to-image';
+import * as domtoimage from 'dom-to-image';
+import {SelectionService} from '../../services/selection.service';
 
 @Component({
   selector: 'interested-courses',
@@ -18,22 +19,22 @@ export class InterestedCoursesComponent implements OnInit {
 
   listings: Listing[] = [];
   isLoaded: boolean = false;
-  private listingIds: Set<string>;
+  private listingIds: Array<string>;
   private subscription;
 
   @Input() showStatusText: boolean = false;
 
   constructor (
-      public sidebarService : SidebarService,
+      private selectionService: SelectionService,
       private conflictsService: ConflictsService,
       private selectedTermService: SelectedTermService) {
-    this.subscription = this.sidebarService.subscribe(() => {
+    this.subscription = this.selectionService.subscribeToSelections(() => {
       this.getCourses();
     });
   }
 
   ngOnInit () {
-    this.listingIds = new Set<string>();
+    this.listingIds = new Array<string>();
     this.getCourses();
   }
 
@@ -41,16 +42,17 @@ export class InterestedCoursesComponent implements OnInit {
     return this.selectedTermService.isCurrentTermActive;
   }
 
-  async getCourses (): Promise<void> {
-    this.listingIds = this.sidebarService.getListingIds();
+  private getCourses () {
+    this.listingIds = this.selectionService.getSelectedListingIds();
 
     // display interested courses on sidebar
     // display message to try selecting some if none
-    if (this.listingIds.size > 0) {
+
+    if (this.listingIds.length > 0) {
       this.showStatusText = false;
       this.isLoaded = false;
       Listing
-        .where({ id: Array.from(this.listingIds) })
+        .where({ id: this.listingIds })
         .includes('sections')
         .includes('sections.listing')
         .includes('course')

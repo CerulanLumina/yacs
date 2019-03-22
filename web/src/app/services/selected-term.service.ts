@@ -54,7 +54,6 @@ export class SelectedTermService {
       } else {
         this.activeId = Array.from(this.terms.keys()).pop();
       }
-      console.log(this.activeId);
     });
     // internal subscription to term for localstorage
     this.subscribeToTerm((term: Term) => {

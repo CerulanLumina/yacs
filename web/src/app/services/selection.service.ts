@@ -10,7 +10,12 @@ import { SelectedTermService } from './selected-term.service';
 export class SelectedSections {
 
   // A mapping of listing ids to an array of section ids that are selected for it
-  private selectionMap: Map<string, string[]>;
+  private selectionMap = new Map<string, string[]>();
+  private eventCallback: () => void;
+
+  constructor(eventCallback: () => void) {
+    this.eventCallback = eventCallback;
+  }
 
   public toggleSection(section: Section): boolean {
     if (this.isSectionSelected(section)) {
@@ -33,6 +38,9 @@ export class SelectedSections {
       this.selectionMap.set(listingId, [id]);
       return true;
     }
+    if (fireEvent) {
+      this.eventCallback();
+    }
   }
   public removeSection(section: Section, fireEvent: boolean = true): boolean {
     const id = section.id;
@@ -42,11 +50,17 @@ export class SelectedSections {
       const idIndex = sectionsForListing.indexOf(id);
       if (idIndex !== -1) {
         sectionsForListing.splice(idIndex, 1);
+        if (sectionsForListing.length === 0) {
+          this.selectionMap.delete(listingId);
+        }
       } else {
         return false;
       }
     } else {
       return false;
+    }
+    if (fireEvent) {
+      this.eventCallback();
     }
   }
   public isSectionSelected(section: Section): boolean {
@@ -65,7 +79,7 @@ export class SelectedSections {
 
   // If listing has any section selected, remove all listing's selected sections
   // else add all listing's sections.
-  public toggleListing(listing: Listing) {
+  public toggleListing(listing: Listing, fireEvent = true) {
     if (this.hasSelectedSection(listing)) {
       // remove all sections of listing
       this.removeListing(listing);
@@ -74,29 +88,62 @@ export class SelectedSections {
         this.addSection(section, false);
       })
     }
-    // TODO fire event
+    if (fireEvent) {
+      this.eventCallback();
+    }
   }
 
   // removes all sections of a listing
   public removeListing(listing: Listing, fireEvent = true) {
-    listing.sections.filter(this.isSectionSelected).forEach((section) => {
+    listing.sections.filter((sect) => this.isSectionSelected(sect)).forEach((section) => {
       this.removeSection(section, false);
     });
-    // TODO fire event if fireEvent
+    if (fireEvent) {
+      this.eventCallback();
+    }
   }
 
   // clear all selections
-  public clearSelections() {
+  public clearSelections(fireEvent = true) {
     this.selectionMap.clear();
+    if (fireEvent) {
+      this.eventCallback();
+    }
+  }
+
+  // returns an array of all selected sections, paired with its associated course id
+  public getSelectedSectionListingPairs(): string[][] {
+    const pairs = [];
+    this.selectionMap.forEach((sections: string[], listing: string) => {
+      sections.forEach((section) => {
+        pairs.push([section, listing]);
+      });
+    });
+    return pairs;
+  }
+
+  public getSelectedSections(): string[] {
+    const ids = [];
+    this.selectionMap.forEach((sections: string[]) => {
+      ids.push(...sections);
+    });
+    return ids;
+  }
+
+  public getSelectedListings(): string[] {
+    return Array.from(this.selectionMap.keys());
   }
 }
 
 @Injectable()
 export class SelectionService {
 
-  private clickEvent = new Subject();
+  // calls every time a selection is changed with the term id as the argument
+  private selectionChanged = new Subject();
   // Term to SelectedSection associations
-  private selections: Map<string, Section[]>;
+  private selections = new Map<string, SelectedSections>();
+
+  private dummySelections = new SelectedSections(() => {});
   // toggleSection(Section)
   // addSection(Section)
   // removeSection
@@ -108,128 +155,150 @@ export class SelectionService {
   // hasSelectedSection
   // isSectionSelected
 
-   constructor (
+  constructor (
     public sidebarService: SidebarService,
     protected selectedTermService: SelectedTermService) {
-    this.selectedTermService.subscribeToActiveTerm((term: Term) => {
-      this.clear();
-    })
+    this.selectedTermService.subscribeToActiveTerm((term) => {
+      this.selectionChanged.next(term.id);
+    });
   }
 
-  subscribe (next): Subscription {
-    return this.clickEvent.subscribe(next);
+  private getSelectedSectionsByTerm(termId?: string): SelectedSections {
+    if (termId === undefined) {
+      // make sure termId is set (max recursion depth = 1)
+      // catch race condition occurs during loading
+      // once the term is ready and the actual selections can be determined, this service will ping everyone that
+      // the selections have changed via its observable (which will fire when selected-term's fires)
+      if (this.selectedTermService.getCurrentTermId === undefined) {
+        return this.dummySelections;
+      }
+      return this.getSelectedSectionsByTerm(this.selectedTermService.getCurrentTermId);
+    } else {
+      if (this.selections.get(termId) === undefined) {
+        this.selections.set(termId, new SelectedSections(() => {
+          this.selectionChanged.next(termId);
+        }));
+      }
+      return this.selections.get(termId);
+    }
   }
 
-  next (event) {
-    this.clickEvent.next(event);
-  }
-
-  private setItem (data1: string, data2) {
-    localStorage.setItem(data1, data2);
-  }
-
-  private getItem (data:string) {
-    return localStorage.getItem(data);
+  public subscribeToSelections(subscriber: (_?: string) => void): Subscription {
+    return this.selectionChanged.subscribe(subscriber);
   }
 
   // calls removeSection or addSection based on isSectionSelected
-  public toggleSection (section : Section) {
-    if (!this.selectedTermService.isCurrentTermActive) { return; }
-    this.isSectionSelected(section) ? this.removeSection(section) : this.addSection(section);
-    this.next('event'); //this should be changed
+  public toggleSection (section: Section, termId?: string): boolean {
+    return this.getSelectedSectionsByTerm(termId).toggleSection(section);
+    // if (!this.selectedTermService.isCurrentTermActive) { return; }
+    // this.isSectionSelected(section) ? this.removeSection(section) : this.addSection(section);
+    // this.next('event'); //this should be changed
   }
 
   // adds section, fires event to observer
-  public addSection (section: Section) {
-    if (!this.selectedTermService.isCurrentTermActive) { return; }
-    let store = this.getSelections() || {};
-    store[section.listing.id] = store[section.listing.id] || [];
-    if (store[section.listing.id].includes(section.id)) return false;
-    store[section.listing.id].push(section.id);
-    store[section.listing.id].sort();
-    this.setItem('selections', JSON.stringify(store));
-
-    this.sidebarService.addListing(section.listing);
-    return true;
+  public addSection (section: Section, termId?: string): boolean {
+    if (this.getSelectedSectionsByTerm(termId).addSection(section)) {
+      this.sidebarService.addListing(section.listing);
+      return true;
+    } else {
+      return false;
+    }
+    // if (!this.selectedTermService.isCurrentTermActive) { return; }
+    // let store = this.getSelections() || {};
+    // store[section.listing.id] = store[section.listing.id] || [];
+    // if (store[section.listing.id].includes(section.id)) return false;
+    // store[section.listing.id].push(section.id);
+    // store[section.listing.id].sort();
+    // this.setItem('selections', JSON.stringify(store));
+    //
+    // this.sidebarService.addListing(section.listing);
+    // return true;
   }
 
   // removes selected section, fires event to observer
-  public removeSection (section: Section) {
-    if (!this.selectedTermService.isCurrentTermActive) { return; }
-    let store = this.getSelections() || {};
-    if (!store[section.listing.id] || !store[section.listing.id].includes(section.id)) return false;
-    store[section.listing.id].splice(store[section.listing.id].indexOf(section.id), 1);
-    if (store[section.listing.id].length == 0) {
-      delete store[section.listing.id];
-    }
-    this.setItem('selections', JSON.stringify(store));
-    return true;
+  public removeSection (section: Section, termId?: string): boolean {
+    return this.getSelectedSectionsByTerm(termId).removeSection(section);
+    // if (!this.selectedTermService.isCurrentTermActive) { return; }
+    // let store = this.getSelections() || {};
+    // if (!store[section.listing.id] || !store[section.listing.id].includes(section.id)) return false;
+    // store[section.listing.id].splice(store[section.listing.id].indexOf(section.id), 1);
+    // if (store[section.listing.id].length == 0) {
+    //   delete store[section.listing.id];
+    // }
+    // this.setItem('selections', JSON.stringify(store));
+    // return true;
   }
 
   // adds or removes all sections of a listing (if any selected section, remove all sections of listing)
   // otherwise, add all sections
-  public toggleCourse(course: Listing) {
-    if (!this.selectedTermService.isCurrentTermActive) { return; }
-    if (this.hasSelectedSection(course)) {
-      let store = this.getSelections();
-      delete store[course.id];
-      this.setItem('selections', JSON.stringify(store));
-    } else {
-      course.sections.forEach((s) => {
-        this.addSection(s);
-      });
-    }
-    this.next('event');
+  public toggleCourse(listing: Listing, termId?: string) {
+    this.getSelectedSectionsByTerm(termId).toggleListing(listing);
+    // if (!this.selectedTermService.isCurrentTermActive) { return; }
+    // if (this.hasSelectedSection(course)) {
+    //   let store = this.getSelections();
+    //   delete store[course.id];
+    //   this.setItem('selections', JSON.stringify(store));
+    // } else {
+    //   course.sections.forEach((s) => {
+    //     this.addSection(s);
+    //   });
+    // }
+    // this.next('event');
   }
 
   // removes all sections of a listing
-   public removeListing(course: Listing) {
-    if (!this.selectedTermService.isCurrentTermActive) { return; }
-    if (this.hasSelectedSection(course)) {
-      let store = this.getSelections();
-      delete store[course.id];
-      this.setItem('selections', JSON.stringify(store));
-    } 
-    this.next('event');
+   public removeListing(listing: Listing, termId?: string) {
+     this.getSelectedSectionsByTerm(termId).removeListing(listing);
+    // if (!this.selectedTermService.isCurrentTermActive) { return; }
+    // if (this.hasSelectedSection(course)) {
+    //   let store = this.getSelections();
+    //   delete store[course.id];
+    //   this.setItem('selections', JSON.stringify(store));
+    // }
+    // this.next('event');
   }
 
 
   // gets whether a section is selected
-  public isSectionSelected (section: Section) : boolean {
-    let store = this.getSelections();
-    return store && store[section.listing.id] && store[section.listing.id].includes(section.id);
+  public isSectionSelected (section: Section, termId?: string): boolean {
+    return this.getSelectedSectionsByTerm(termId).isSectionSelected(section);
+    // let store = this.getSelections();
+    // return store && store[section.listing.id] && store[section.listing.id].includes(section.id);
   }
 
   // gets whether a course has a section that is selected
-  public hasSelectedSection (course: Listing) : boolean {
-    let store = this.getSelections();
-    return store && store[course.id] && store[course.id].length > 0;
+  public hasSelectedSection (listing: Listing, termId?: string): boolean {
+    return this.getSelectedSectionsByTerm(termId).hasSelectedSection(listing);
+
+
+    // let store = this.getSelections();
+    // return store && store[course.id] && store[course.id].length > 0;
   }
 
-  // gets a json representation
-  public getSelections () {
-    return JSON.parse(this.getItem('selections')) || {};
+  public getSelectedSectionListingPairs(termId?: string): string[][] {
+    return this.getSelectedSectionsByTerm(termId).getSelectedSectionListingPairs();
   }
 
   // gets an array of all selected section ids
-  public getSelectedSectionIds () {
-    const selections = this.getSelections();
-    const sectionIds = [];
-    Object.keys(selections).forEach((key) => {
-      sectionIds.push(...selections[key]);
-    });
-    return sectionIds;
+  public getSelectedSectionIds(termId?: string): string[] {
+    return this.getSelectedSectionsByTerm(termId).getSelectedSections();
+    // const selections = this.getSelections();
+    // const sectionIds = [];
+    // Object.keys(selections).forEach((key) => {
+    //   sectionIds.push(...selections[key]);
+    // });
+    // return sectionIds;
   }
 
-  // gets an array of all selected listing ids
-  public getSelectedCourseIds () {
-    return Object.keys(this.getSelections());
+  public getSelectedListingIds(termId?: string): string[] {
+    return this.getSelectedSectionsByTerm(termId).getSelectedListings();
   }
 
   // removes all selections
-  public clear () {
-    let store = {};
-    this.setItem('selections', JSON.stringify(store));
-    this.next('event');
+  public clear(termId?: string) {
+    this.getSelectedSectionsByTerm(termId).clearSelections();
+    // let store = {};
+    // this.setItem('selections', JSON.stringify(store));
+    // this.next('event');
   }
 }
