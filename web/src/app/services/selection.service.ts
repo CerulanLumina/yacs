@@ -158,7 +158,7 @@ export class SelectionService {
   constructor (
     public sidebarService: SidebarService,
     protected selectedTermService: SelectedTermService) {
-    this.selectedTermService.subscribeToActiveTerm((term) => {
+    this.selectedTermService.subscribeToTerm((term) => {
       this.selectionChanged.next(term.id);
     });
   }
