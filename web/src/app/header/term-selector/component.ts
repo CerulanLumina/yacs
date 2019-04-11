@@ -31,11 +31,6 @@ export class TermSelectorComponent implements OnInit {
   get isLastTerm(): boolean {
     return this.selectedTermService.getCurrentOrdinal === this.selectedTermService.getMaximumOrdinal;
   }
-
-  get isActiveTerm(): boolean {
-    return this.selectedTermService.isCurrentTermActive;
-  }
-
   /**
    * Move to the previous (more recent) Term
    */

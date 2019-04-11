@@ -38,10 +38,6 @@ export class InterestedCoursesComponent implements OnInit {
     this.getCourses();
   }
 
-  get isActiveTerm(): boolean {
-    return this.selectedTermService.isCurrentTermActive;
-  }
-
   private getCourses () {
     this.listingIds = this.selectionService.getSelectedListingIds();
 
