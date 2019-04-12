@@ -6,10 +6,32 @@ import {Subject, Subscription, Subscriber} from 'rxjs/Rx';
 import { Section, Listing, Term } from 'yacs-api-client';
 import { SelectedTermService } from './selected-term.service';
 
+export enum Interest {
+  Selected,
+  Interested
+}
+
+export class InterestedSection {
+
+  constructor(private sectionId: string, private interest: Interest) {}
+
+  public get getSectionId(): string {
+    return this.sectionId;
+  }
+
+  public get getInterest(): Interest {
+    return this.interest;
+  }
+
+  public set setInterest(value: Interest) {
+    this.interest = value;
+  }
+}
+
 export class SelectedSections {
 
   // A mapping of listing ids to an array of section ids that are selected for it
-  private selectionMap = new Map<string, string[]>();
+  private selectionMap = new Map<string, InterestedSection[]>();
   private eventCallback: () => void;
 
   constructor(eventCallback: () => void) {
@@ -18,40 +40,70 @@ export class SelectedSections {
 
   public toggleSection(section: Section): boolean {
     if (this.isSectionSelected(section)) {
-      return this.removeSection(section);
+      return this.removeSectionSelection(section);
     } else {
-      return this.addSection(section);
+      return this.addSection(section, Interest.Selected);
     }
   }
-  public addSection(section: Section, fireEvent: boolean = true): boolean {
+  public addSection(section: Section, interest: Interest, fireEvent: boolean = true): boolean {
     const id = section.id;
     const listingId = section.listing.id;
     if (this.selectionMap.has(listingId)) {
       const sectionsForListing = this.selectionMap.get(listingId);
-      if (sectionsForListing.indexOf(id) !== -1) {
+      if (sectionsForListing.findIndex((interestedSection) => interestedSection.getSectionId === id) !== -1) {
         return false;
       } else {
-        sectionsForListing.push(id);
+        sectionsForListing.push(new InterestedSection(id, interest));
       }
     } else {
-      this.selectionMap.set(listingId, [id]);
+      this.selectionMap.set(listingId, [new InterestedSection(id, interest)]);
       return true;
     }
     if (fireEvent) {
       this.eventCallback();
     }
   }
-  public removeSection(section: Section, fireEvent: boolean = true): boolean {
+
+  // /**
+  //  * Removes a Section entirely (not interested or selected)
+  //  * @param section
+  //  * @param fireEvent
+  //  */
+  // public removeSectionEntirely(section: Section, fireEvent: boolean = true): boolean {
+  //   const id = section.id;
+  //   const listingId = section.listing.id;
+  //   if (this.selectionMap.has(listingId)) {
+  //     const sectionsForListing = this.selectionMap.get(listingId);
+  //     const idIndex = sectionsForListing.findIndex((interestedSection) => interestedSection.getSectionId === id);
+  //     if (idIndex !== -1) {
+  //       sectionsForListing.splice(idIndex, 1);
+  //       if (sectionsForListing.length === 0) {
+  //         this.selectionMap.delete(listingId);
+  //       }
+  //     } else {
+  //       return false;
+  //     }
+  //   } else {
+  //     return false;
+  //   }
+  //   if (fireEvent) {
+  //     this.eventCallback();
+  //   }
+  // }
+
+  /**
+   * Removes a Section's selection, dropping it to interested
+   * @param section
+   * @param fireEvent
+   */
+  public removeSectionSelection(section: Section, fireEvent: boolean = true): boolean {
     const id = section.id;
     const listingId = section.listing.id;
     if (this.selectionMap.has(listingId)) {
       const sectionsForListing = this.selectionMap.get(listingId);
-      const idIndex = sectionsForListing.indexOf(id);
+      const idIndex = sectionsForListing.findIndex((interestedSection) => interestedSection.getSectionId === id);
       if (idIndex !== -1) {
-        sectionsForListing.splice(idIndex, 1);
-        if (sectionsForListing.length === 0) {
-          this.selectionMap.delete(listingId);
-        }
+        sectionsForListing[idIndex].setInterest = Interest.Interested;
       } else {
         return false;
       }
@@ -62,18 +114,48 @@ export class SelectedSections {
       this.eventCallback();
     }
   }
-  public isSectionSelected(section: Section): boolean {
+
+  public getSectionInterest(section: Section): Interest | null {
     const id = section.id;
     const listingId = section.listing.id;
     if (this.selectionMap.has(listingId)) {
       const sectionsForListing = this.selectionMap.get(listingId);
-      return sectionsForListing.indexOf(id) !== -1;
+      const index = sectionsForListing.findIndex((interestedSection) => interestedSection.getSectionId === id);
+      if (index !== -1) {
+        return sectionsForListing[index].getInterest;
+      }
+      return null;
     }
+  }
+
+  public isSectionSelected(section: Section): boolean {
+    const sectionInterest = this.getSectionInterest(section);
+    if (sectionInterest === null) {
+      return false;
+    } else {
+      return this.getSectionInterest(section) === Interest.Selected;
+    }
+  }
+
+  public isSectionInterested(section: Section): boolean {
+    const sectionInterest = this.getSectionInterest(section);
+    if (sectionInterest === null) {
+      return false;
+    } else {
+      return this.getSectionInterest(section) === Interest.Interested;
+    }  }
+
+  // check if listing has any interested sections
+  public hasInterestedSection(listing: Listing): boolean {
+    return this.selectionMap.has(listing.id);
   }
 
   // check if listing has any selected sections
   public hasSelectedSection(listing: Listing): boolean {
-    return this.selectionMap.has(listing.id);
+    return this.hasInterestedSection(listing) &&
+      this.selectionMap.get(listing.id)
+        .map((interestedSection) => interestedSection.getInterest === Interest.Selected)
+        .reduce((accum, current) => accum || current, false);
   }
 
   // If listing has any section selected, remove all listing's selected sections
@@ -81,10 +163,10 @@ export class SelectedSections {
   public toggleListing(listing: Listing, fireEvent = true) {
     if (this.hasSelectedSection(listing)) {
       // remove all sections of listing
-      this.removeListing(listing);
+      this.removeListingSelection(listing);
     } else {
       listing.sections.forEach((section) => {
-        this.addSection(section, false);
+        this.addSection(section, Interest.Selected, false);
       })
     }
     if (fireEvent) {
@@ -92,12 +174,25 @@ export class SelectedSections {
     }
   }
 
-  // removes all sections of a listing
-  public removeListing(listing: Listing, fireEvent = true) {
+  // Drops all sections of a listing to Interested
+  public removeListingSelection(listing: Listing, fireEvent = true) {
     listing.sections.filter((sect) => this.isSectionSelected(sect)).forEach((section) => {
-      this.removeSection(section, false);
+      this.removeSectionSelection(section, false);
     });
     if (fireEvent) {
+      console.log('here');
+      this.eventCallback();
+    }
+  }
+
+  // Remove a listing entirely
+  public removeListingEntirely(listing: Listing, fireEvent = true) {
+    if (this.selectionMap.has(listing.id))
+    listing.sections.filter((sect) => this.isSectionSelected(sect)).forEach((section) => {
+      this.removeSectionSelection(section, false);
+    });
+    if (fireEvent) {
+      console.log('here');
       this.eventCallback();
     }
   }
@@ -113,17 +208,23 @@ export class SelectedSections {
   // returns an array of all selected sections, paired with its associated course id
   public getSelectedSectionListingPairs(): string[][] {
     const pairs = [];
-    this.selectionMap.forEach((sections: string[], listing: string) => {
-      sections.forEach((section) => {
-        pairs.push([section, listing]);
-      });
+    this.selectionMap.forEach((interestedSections: InterestedSection[], listing: string) => {
+      interestedSections
+        .filter((interestedSection) => {
+          return interestedSection.getInterest === Interest.Selected;
+        })
+        .map(selectedSection => selectedSection.getSectionId)
+        .forEach((section) => {
+          pairs.push([section, listing]);
+        });
     });
     return pairs;
   }
 
   public getSelectedSections(): string[] {
     const ids = [];
-    this.selectionMap.forEach((sections: string[]) => {
+    this.selectionMap.forEach((sections: InterestedSection[]) => {
+      sections.map(interestedSection => interestedSection.getSectionId);
       ids.push(...sections);
     });
     return ids;
