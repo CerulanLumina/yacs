@@ -101,7 +101,7 @@ export class ListingComponent implements OnInit{
   }
 
   public removeButtonClick (): void {
-    this.sidebarService.removeListing(this.listing);
+    // TODO remove from interested courses
     this.selectionService.removeListing(this.listing);
   }
 }

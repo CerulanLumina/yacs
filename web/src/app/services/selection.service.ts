@@ -4,7 +4,6 @@ import 'rxjs/Rx';
 import {Subject, Subscription, Subscriber} from 'rxjs/Rx';
 
 import { Section, Listing, Term } from 'yacs-api-client';
-import { SidebarService } from './sidebar.service';
 import { SelectedTermService } from './selected-term.service';
 
 export class SelectedSections {
@@ -156,7 +155,6 @@ export class SelectionService {
   // isSectionSelected
 
   constructor (
-    public sidebarService: SidebarService,
     protected selectedTermService: SelectedTermService) {
     this.selectedTermService.subscribeToTerm((term) => {
       this.selectionChanged.next(term.id);
@@ -197,12 +195,7 @@ export class SelectionService {
 
   // adds section, fires event to observer
   public addSection (section: Section, termId?: string): boolean {
-    if (this.getSelectedSectionsByTerm(termId).addSection(section)) {
-      this.sidebarService.addListing(section.listing);
-      return true;
-    } else {
-      return false;
-    }
+    return this.getSelectedSectionsByTerm(termId).addSection(section);
     // if (!this.selectedTermService.isCurrentTermActive) { return; }
     // let store = this.getSelections() || {};
     // store[section.listing.id] = store[section.listing.id] || [];
